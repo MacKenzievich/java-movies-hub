@@ -42,7 +42,7 @@ public class MoviesStore {
         return new ArrayList<>(movies.values());
     }
 
-    public static void clearStore(){
+    public static void clearStore() {
         movies = new HashMap<>();
     }
 }
