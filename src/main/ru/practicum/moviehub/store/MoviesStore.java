@@ -9,40 +9,36 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 public class MoviesStore {
-    private static Map<Integer, Movie> movies = new HashMap<>();
+    private Map<Integer, Movie> movies = new HashMap<>();
+    private static Integer idCounter = 0;
 
-    public static boolean addNewMovie(Movie movie) {
-        movies.put(movie.getId(), movie);
-        return true;
+    public int addNewMovie(Movie movie) {
+        idCounter++;
+        movies.put(idCounter, movie);
+        return idCounter;
     }
 
-    public static Movie foundMovie(Integer id) {
-        if (movies.containsKey(id)) {
+    public Movie findMovie(Integer id) {
             return movies.get(id);
-        }
-        return null;
     }
 
-    public static boolean deleteMovie(Integer id) {
-        if (movies.containsKey(id)) {
-            movies.remove(id);
-            return true;
-        }
-        return false;
+    public Movie deleteMovie(Integer id) {
+        return movies.remove(id);
     }
 
-    public static List<Movie> filtrationMovies(Integer year) {
-        List<Movie> filteredMovies = movies.values().stream()
-                .filter(movie -> movie.getYear().equals(year))
-                .collect(Collectors.toList());
-        return filteredMovies;
-    }
 
-    public static List<Movie> getMovies() {
-        return new ArrayList<>(movies.values());
-    }
+public List<Movie> filterMovies(Integer year) {
+    List<Movie> filteredMovies = movies.values().stream()
+            .filter(movie -> movie.getYear().equals(year))
+            .collect(Collectors.toList());
+    return filteredMovies;
+}
 
-    public static void clearStore() {
-        movies = new HashMap<>();
-    }
+public List<Movie> getMovies() {
+    return new ArrayList<>(movies.values());
+}
+
+public void clearStore() {
+    movies = new HashMap<>();
+}
 }

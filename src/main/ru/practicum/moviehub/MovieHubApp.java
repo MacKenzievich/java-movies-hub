@@ -5,7 +5,7 @@ import ru.practicum.moviehub.store.MoviesStore;
 
 public class MovieHubApp {
     public static void main(String[] args) {
-        final MoviesServer server = new MoviesServer();
+        final MoviesServer server = new MoviesServer(new MoviesStore());
         final MoviesStore store = new MoviesStore();
         Runtime.getRuntime().addShutdownHook(new Thread(server::stop));
         server.start();

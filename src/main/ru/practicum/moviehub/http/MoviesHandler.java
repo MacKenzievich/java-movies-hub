@@ -7,30 +7,42 @@ import com.sun.net.httpserver.HttpExchange;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.util.List;
+import java.util.*;
 
 public class MoviesHandler extends BaseHttpHandler {
+    private final MoviesStore store;
+    private static final int MIN_YEAR = 1888;
+    private static final int MAX_TITLE_LENGTH = 100;
+    private static final List<String> SUPPORTED_METHODS = Arrays.asList("GET", "POST", "DELETE");
+
+    public MoviesHandler(MoviesStore store) {
+        this.store = store;
+    }
 
     @Override
     public void handle(HttpExchange exchange) throws IOException {
         String method = exchange.getRequestMethod();
+        if (!SUPPORTED_METHODS.contains(method)) {
+            sendJson(exchange, 405, gson.toJson(new ErrorResponse("Method Not Allowed", null)));
+            return;
+        }
         String path = exchange.getRequestURI().getPath();
         String query = exchange.getRequestURI().getQuery();
 
-        if ((method.equals("POST")) || (method.equals("PUT") && path.matches("^/movies/"))) {
+        if ((method.equals("POST")) || (method.equals("PUT") && path.matches(MoviesServer.MOVIES_PATH))) {
             String contentType = exchange.getRequestHeaders().getFirst("Content-Type");
             if (contentType == null || !contentType.startsWith("application/json")) {
                 sendJson(exchange, 415, gson.toJson(new ErrorResponse("Неподдерживаемый тип контента", null)));
                 return;
             }
         }
-        if (method.equals("GET") && "/movies".equals(path)) {
+        if (method.equals("GET") && MoviesServer.MOVIES_PATH.equals(path)) {
             handleGetAllOrFiltered(exchange, query);
-        } else if (method.equals("POST") && "/movies".equals(path)) {
+        } else if (method.equals("POST") && MoviesServer.MOVIES_PATH.equals(path)) {
             handleAddMovie(exchange);
-        } else if (method.equals("GET") && path.startsWith("/movies/")) {
+        } else if (method.equals("GET") && path.startsWith(MoviesServer.MOVIES_PATH)) {
             handleGetMovieById(exchange);
-        } else if (method.equals("DELETE") && path.startsWith("/movies/")) {
+        } else if (method.equals("DELETE") && path.startsWith(MoviesServer.MOVIES_PATH)) {
             handleDeleteMovie(exchange);
         } else {
             sendJson(exchange, 404, gson.toJson(new ErrorResponse("Маршрут не найден", null)));
@@ -41,22 +53,24 @@ public class MoviesHandler extends BaseHttpHandler {
         if (query != null && query.startsWith("year=")) {
             try {
                 int year = Integer.parseInt(query.substring(5));
-                List<Movie> result = MoviesStore.filtrationMovies(year);
+                List<Movie> result = store.filterMovies(year);
                 String json = gson.toJson(result);
                 sendJson(exchange, 200, json);
             } catch (NumberFormatException e) {
                 sendJson(exchange, 400, gson.toJson(new ErrorResponse("Некорректный параметр запроса — 'year'", null)));
             }
         } else {
-            List<Movie> movies = MoviesStore.getMovies();
+            List<Movie> movies = store.getMovies();
             String json = gson.toJson(movies);
             sendJson(exchange, 200, json);
         }
     }
 
     private void handleAddMovie(HttpExchange exchange) throws IOException {
+
         String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
         Movie movie;
+
         try {
             movie = gson.fromJson(body, Movie.class);
         } catch (Exception e) {
@@ -64,27 +78,37 @@ public class MoviesHandler extends BaseHttpHandler {
             return;
         }
 
-        // Валидация
-        java.util.List<String> details = new java.util.ArrayList<>();
-        if (movie.getTitle() == null || movie.getTitle().trim().isEmpty()) {
-            details.add("название не должно быть пустым");
-        } else if (movie.getTitle().length() > 100) {
-            details.add("название не должно превышать 100 символов");
-        }
-
-        int currentYear = java.time.Year.now().getValue();
-        if (movie.getYear() < 1888 || movie.getYear() > currentYear + 1) {
-            details.add("год должен быть между 1888 и " + (currentYear + 1));
-        }
-
-        if (!details.isEmpty()) {
-            sendJson(exchange, 422, gson.toJson(new ErrorResponse("Ошибка валидации", details)));
+        List<String> validationErrors = validateMovie(movie);
+        if (!validationErrors.isEmpty()) {
+            sendJson(exchange, 422, gson.toJson(new ErrorResponse("Ошибка валидации", validationErrors)));
             return;
         }
 
-        Movie newMovie = new Movie(movie.getTitle(), movie.getYear());
-        MoviesStore.addNewMovie(newMovie);
-        sendJson(exchange, 201, gson.toJson(newMovie));
+
+        int id = store.addNewMovie(movie);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("id", id);
+        response.put("title", movie.getTitle());
+        response.put("year", movie.getYear());
+
+        sendJson(exchange, 201, gson.toJson(response));
+    }
+
+    private List<String> validateMovie(Movie movie) {
+        List<String> errors = new ArrayList<>();
+        int currentYear = java.time.Year.now().getValue();
+
+        if (movie.getTitle() == null || movie.getTitle().trim().isEmpty()) {
+            errors.add("название не должно быть пустым");
+        } else if (movie.getTitle().length() > MAX_TITLE_LENGTH) {
+            errors.add("название не должно превышать 100 символов");
+        }
+
+        if (movie.getYear() < MIN_YEAR || movie.getYear() > currentYear + 1) {
+            errors.add("год должен быть между " + MIN_YEAR + " и " + (currentYear + 1));
+        }
+        return errors;
     }
 
     private void handleGetMovieById(HttpExchange exchange) throws IOException {
@@ -100,7 +124,7 @@ public class MoviesHandler extends BaseHttpHandler {
             return;
         }
 
-        Movie movie = MoviesStore.foundMovie(id);
+        Movie movie = store.findMovie(id);
         if (movie == null) {
             sendJson(exchange, 404, gson.toJson(new ErrorResponse("Фильм не найден", null)));
             return;
@@ -121,8 +145,7 @@ public class MoviesHandler extends BaseHttpHandler {
             return;
         }
 
-        boolean deleted = MoviesStore.deleteMovie(id);
-        if (deleted) {
+        if (store.deleteMovie(id) != null) {
             sendNoContent(exchange);
         } else {
             sendJson(exchange, 404, gson.toJson(new ErrorResponse("Фильм не найден", null)));
