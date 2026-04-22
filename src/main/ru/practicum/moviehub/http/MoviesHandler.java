@@ -84,7 +84,6 @@ public class MoviesHandler extends BaseHttpHandler {
             return;
         }
 
-
         int id = store.addNewMovie(movie);
 
         Map<String, Object> response = new HashMap<>();
